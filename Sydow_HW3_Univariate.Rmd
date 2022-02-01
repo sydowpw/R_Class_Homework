@@ -1,0 +1,371 @@
+---
+title: "Sydow_HW3_Univariate Modeling"
+author: "Patrick Sydow"
+date: "1/26/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Clean slate
+```{r}
+rm(list = ls(all = TRUE)) 
+```
+
+Read in Tree Data
+```{r}
+# read in directly from website: 
+trees <- read.csv('https://raw.githubusercontent.com/dmcglinn/quant_methods/gh-pages/data/treedata_subset.csv')
+```
+
+Restructure and Subset Data
+```{r}
+# we wish to model species cover across all sampled plots
+# create site x sp matrix for two species 
+sp_cov = with(trees, tapply(cover, list(plotID, spcode), 
+                           function(x) round(mean(x))))
+sp_cov = ifelse(is.na(sp_cov), 0, sp_cov)
+sp_cov = data.frame(plotID = row.names(sp_cov), sp_cov)
+# create environmental matrix
+cols_to_select = c('elev', 'tci', 'streamdist', 'disturb', 'beers')
+env = aggregate(trees[ , cols_to_select], by = list(trees$plotID), 
+                function(x) x[1])
+names(env)[1] = 'plotID'
+# merge species and enviornmental matrices
+site_dat = merge(sp_cov, env, by='plotID')
+# subset species of interest
+abies = site_dat[ , c('ABIEFRA', cols_to_select)]
+acer  = site_dat[ , c('ACERRUB', cols_to_select)]
+names(abies)[1] = 'cover'
+names(acer)[1] = 'cover'
+```
+
+1. Carry out an exploratory analysis using the tree dataset. Metadata for the tree study can be found here. Specifically, I would like you to develop and compare models for species cover for a habitat generalist Acer rubrum (Red maple) and a habitat specialist Abies fraseri (Frasier fir). Because this dataset includes both continuous and discrete explanatory variables use the function Anova in the packages car as such
+
+library(car)
+Anova(my_mod, type=3)
+
+This will estimate partial effect sizes, variance explained, and p-values for each explanatory variable included in the model.
+
+Compare the p-values you observe using the function Anova to those generated using summary.
+
+For each species address the following additional questions:
+
+how well does the exploratory model appear to explain cover?
+which explanatory variables are the most important?
+do model diagnostics indicate any problems with violations of OLS assumptions?
+are you able to explain variance in one species better than another, why might this be the case?
+
+Let's start with Acer rubrum and make some plots
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+ggplot(data = acer,aes(x = elev, y = cover)) + geom_point() + geom_smooth(method=lm)
+ggplot(data = acer,aes(x = tci, y = cover)) + geom_point() + geom_smooth(method=lm)
+ggplot(data = acer,aes(x = streamdist, y = cover)) + geom_point() + geom_smooth(method=lm)
+ggplot(data = acer,aes(x = beers, y = cover)) + geom_point() + geom_smooth(method=lm)
+
+ggplot(data = acer,aes(x = disturb, y = cover)) + geom_boxplot()
+```
+
+It seems like there is nothing much to see here. Only the elevation plot yields a regression with a slope that seems to stray from 0. There may be differences in acer cover across site disturbances. Let's see if the differences in site disturbance can explain some of this variation in tree cover.
+```{r}
+ggplot(data = acer,aes(x = elev, y = cover, color = disturb)) + geom_point() + geom_smooth(method=lm)
+ggplot(data = acer,aes(x = tci, y = cover, color = disturb)) + geom_point() + geom_smooth(method=lm)
+ggplot(data = acer,aes(x = streamdist, y = cover, color = disturb)) + geom_point() + geom_smooth(method=lm)
+ggplot(data = acer,aes(x = beers, y = cover, color = disturb)) + geom_point() + geom_smooth(method=lm)
+
+```
+There seems to be a lot of variation tree cover data that cannot be explained by a single variable. Similarly, the variation in tree cover as a response to any of the continuous variables is not explained by the differences in site disturbance: a categorical variable. With overlapping regressions, there does not seem to be an interaction between site disturbance and any other the other explanatory variables.   
+
+Now let's start building a model.
+
+First I will create a null model and compare models after adding explanatory variables.
+
+```{r}
+acer_null_mod = lm(cover ~ 1, data = acer)
+acer_null_mod
+```
+
+Now I will create a model with all main effects included.
+
+```{r}
+acer_all_mod = lm(cover ~ elev + streamdist + tci + beers + disturb, data = acer)
+acer_all_mod
+```
+Let's compare the null model to this all inclusive model.
+```{r}
+library(car)
+
+Anova(acer_all_mod, type = 3)
+Anova(acer_null_mod, type = 3)
+```
+Now let's use the summary() function to take another look.
+
+```{r}
+summary(acer_all_mod)
+summary(null_mod)
+```
+
+From both perspectives the streamdistance variable does not seem to be very signifcant and should to removed from the model according to the law of parsimony. Using the Anova() function, site disturbance type does not to be a significant variable. But, when using the summary() function we can see that the SETTLE factor within site disturbance is significant.
+
+```{r}
+acer_apt_mod = lm(cover ~ elev + tci + beers + disturb, data = acer)
+acer_apt2_mod = lm(cover ~ elev + tci + beers , data = acer)
+
+summary(acer_apt_mod)
+summary(acer_apt2_mod)
+```
+
+Removing the disturb variable from the model does not seem to affect the overall significance of the model but does decrease the variance explained according the the lower adjusted R-squared value. Because both models explain such little variance anyway, I am going reduce the model to be simpler and to only include elevation, tci and beers.
+
+```{r}
+acer_final_model <- lm(cover ~ elev + tci + beers , data = acer)
+acer_final_model
+```
+
+Let's answer those questions now...
+
+How well does the exploratory model appear to explain cover?
+
+With such a low adjusted R-squared value of 0.1675, the exploratory model does not explain cover very much.
+```{r}
+summary(acer_final_model)
+```
+Which explanatory variables are the most important?
+
+With the lowest standard error, greatest t-value, and smallest p-value, elevation seems to be the most important variable. Both tci and beers are also significant explanatory variables.
+
+```{r}
+summary(acer_final_model)
+```
+
+Do model diagnostics indicate any problems with violations of OLS assumptions?
+```{r}
+par(mfrow = c(2,2))
+plot(acer_final_model)
+```
+Yes, while the residuals are normally distributed according to the top left graph, the bottom right plot indicates outliers with particularly high influence at points 318 and 121. This is a problem as these points might be having potentially too much influence on the whole model. There is also some problem with the top and bottom left plots. These plots indicate that there may not be homoscedasticity of errors with the residuals of fitted values >2 behaving differently than those <2.
+
+Let's look at the Abies fraseri data
+```{r}
+ggplot(data = abies,aes(x = elev, y = cover)) + geom_point() + geom_smooth(method=lm)
+ggplot(data = abies,aes(x = tci, y = cover)) + geom_point() + geom_smooth(method=lm)
+ggplot(data = abies,aes(x = streamdist, y = cover)) + geom_point() + geom_smooth(method=lm)
+ggplot(data = abies,aes(x = beers, y = cover)) + geom_point() + geom_smooth(method=lm)
+
+ggplot(data = abies,aes(x = disturb, y = cover)) + geom_boxplot()
+```
+
+Plotting the data for Abies fraseri seems to reveal a pattern with elevation.  As elevation increases, the cover of Abies fraseri increases. Additionally, whether or not the plot is virgin forest seems to have an effect on cover. Let's see if the variation in the other plots can be explained by the elevation of samples.
+
+```{r}
+ggplot(data = abies,aes(x = tci, y = cover, color = elev)) + geom_point() + geom_smooth(method=lm) +
+  scale_color_gradient()
+ggplot(data = abies,aes(x = beers, y = cover, color = elev)) + geom_point() + geom_smooth(method=lm) + scale_color_gradient()
+ggplot(data = abies,aes(x = streamdist, y = cover, color = elev)) + geom_point() + geom_smooth(method=lm) +
+  scale_color_gradient()
+
+```
+Yes, it seems like all of the higher cover measurements are in higher elevations. There may also be an interaction between elevation and stream distance: at lower elevations cover = 0 but at higher elevations, cover increases and stream distance increases. 
+
+Let's start with a null model and all inclusive model.
+
+```{r}
+abies_null_mod = lm(cover ~ 1, data = abies)
+
+abies_all_mod = lm(cover ~ elev + streamdist + tci + beers + disturb, data = abies)
+
+Anova(abies_null_mod, type = 3)
+Anova(abies_all_mod, type = 3)
+
+summary(abies_null_mod)
+summary(abies_all_mod)
+
+```
+
+Yes, elevation has explains a lot of variation with a low p-value. Additionally, disturbance is significant according to both the summary() and Anova() functions with the VIRGIN factor explaining the most variation most significantly. 
+
+Let's adapt this model by removing beers and tci and having an interaction between elevation and stream distance
+
+```{r}
+abies_apt_mod = lm(cover ~ elev + streamdist + elev:streamdist + disturb, data = abies)
+
+Anova(abies_apt_mod, type = 3)
+summary(abies_apt_mod)
+
+```
+
+Woohoo! The elev:streamdist interaction explains a lot of variation, is significant and increases the adjusted R-squared value of the model. 
+
+Let's create a final model including an interaction between elev and disturbance (only high elevation virgin forest have high cover).
+
+```{r}
+abies_final_mod = lm(cover ~ elev + streamdist + elev:streamdist + elev:disturb + disturb, data = abies)
+
+Anova(abies_final_mod, type = 3)
+summary(abies_final_mod)
+
+```
+
+Alright, let's answer those questions...
+
+How well does the exploratory model appear to explain cover?
+
+The abies exploratory model explains cover a bit better. It is significant with a low p-value and has an adjusted r-squared of 0.63. Not too bad.
+```{r}
+Anova(abies_final_mod, type = 3)
+summary(abies_final_mod)
+```
+Which explanatory variables are the most important?
+
+With the greatest t-value and smallest p-value the interaction between elevation and disturbance seems to be the most important variable. the disturbance variable by itself is also an important explaintory variable. 
+
+Do model diagnostics indicate any problems with violations of OLS assumptions?
+```{r}
+par(mfrow = c(2,2))
+plot(abies_final_mod)
+```
+Yes, according the the top right plot, the residuals are not normally distributed. Additionally, the bottom right plot indicates an outlier with particularly high influence at point 66. This is a problem as these points might be having potentially too much influence on the whole model. There is also some problem with the top and bottom left plots. These plots indicate that there may not be homoscedasticity of errors with the residuals of behaving differently at different fitted values.
+
+Maybe we can simplify the model to decrease these problems...
+
+```{r}
+abies_mod = lm(cover ~ elev:disturb + elev:streamdist, data = abies)
+
+summary(abies_mod)
+
+par(mfrow = c(2,2))
+plot(abies_mod)
+```
+
+It does not look like that helped much... This might be because of how the cover data is distributed. With so many 0 values outside of measurements from high elevations and virgin forests.
+
+Are you able to explain variance in one species better than another, why might this be the case?
+
+Yes, although the exploratory Abies model may not meet all of the OLS assumptions, it still explains more variance than the Acer model. I believe this might be the case because of the different life histories of the two species. Abies fraseri is a specialist in that as a confer it is known to be found at higher elevations in drier environments. Because of it's predictable distribution, the cover of Abies fraseri is easier to model. On the other hand, Acer rubrum is known to be a generalist being found in many different environments. Because Acer rubrum ranges across a wide variety of environments, measurements of environmental factors themselves can not full explain the presence or absence of the species. 
+
+2. You may have noticed that the variable cover is defined as positive integers between 1 and 10. and is therefore better treated as a discrete rather than continuous variable. Re-examine your solutions to the question above but from the perspective of a General Linear Model (GLM) with a Poisson error term
+(rather than a Gaussian one as in OLS). The Poisson distribution generates integers 0 to positive infinity so this may provide a good first approximation. 
+
+```{r}
+pseudo_r2 = function(glm_mod) {
+                1 -  glm_mod$deviance / glm_mod$null.deviance
+}
+```
+
+Start with the acer model...
+
+```{r}
+
+acer_poi = glm(cover ~ elev + tci + beers, data = acer, 
+           family='poisson')
+acer_poi
+summary(acer_poi)
+
+pseudo_r2(acer_poi)
+
+```
+
+how well does the exploratory model appear to explain cover?
+
+Again, this Poisson exploratory model does not appear to explain cover very well. In fact, it seems to do a worse job than the Guassian model (0.13 vs 0.17 for values that describe explained variance. 
+
+which explanatory variables are the most important?
+
+In this Poisson model, the most important explanatory variable seems to be elevation as in the Gaussian model. 
+
+do model diagnostics indicate any problems with violations of assumptions?
+
+```{r}
+par(mfrow = c(2,2))
+plot(acer_poi)
+```
+
+There does not seem to be any difference between the diagnostic plots of the OLS and GLM models. 
+
+Then work with the abies model...
+
+```{r}
+abies_poi = glm(cover ~ elev + streamdist + elev:streamdist + elev:disturb + disturb, data = abies, 
+           family='poisson')
+abies_poi
+summary(abies_poi)
+
+pseudo_r2(abies_poi)
+```
+
+how well does the exploratory model appear to explain cover?
+
+The Poisson exploratory model appears to explain the cover of the abies species much better than the Gaussian model (0.89 vs 0.63 for values that describe explained variance).
+
+which explanatory variables are the most important?
+
+In this Poisson model, none of the explanatory variables appear to be very significant. This is not the case when the model is simplified...
+
+```{r}
+abies_poi2 = glm(cover ~ elev + streamdist + disturb, data = abies, 
+           family='poisson')
+abies_poi2
+summary(abies_poi2)
+
+pseudo_r2(abies_poi2)
+```
+
+In this simplified model that does not sacrifice much explanation of variance, elevation is the most important explanatory variable. Because of this, it seems like using a Poisson distribution allows for and favors a simpler model.
+
+do model diagnostics indicate any problems with violations of assumptions?
+
+Let's go with the simpler model now...
+
+```{r}
+par(mfrow = c(2,2))
+plot(abies_poi2)
+```
+
+While there are still patterns evident in the top and bottom left-hand plots, it seems as though the residuals are behaving more regularly across the range of the data in the Poisson model when compared to the Gaussian one. The residuals are still not normally distributed, however, as can be seen in the top right plot. In the bottom right plot it is also apparent that there are still significant outliers.
+
+are you able to explain variance in one species better than another, why might this be the case?
+
+Again, using Poisson distributions when modeling still allows us to explain the variance in cover for the abies species better than the acer species. But, the using a Poisson distribution improved the abies model much more than it improved the acer model.
+
+Compare your qualatitive assessment of which variables were most important in each model. Does it appear that changing the error distribution changed the results much? In what ways?
+
+In the acer model, changing the error distribution did not change the results much. In the abies model, however, a simpler model for the abies species was achieved using a Poisson error distribution where elevation was found to be an important variable as opposed to stream distance and disturbance as in the models using Gaussian error distributions. The Poisson error distribution also allowed for a model that explains much more variance in abies cover but not in acer cover.
+
+3. Provide a plain English summary (i.e., no statistics) of what you have found and what conclusions we can take away from your analysis?
+
+According to the exploratory linear models that use both Gaussian and Poisson error distributions, the variation in cover of Abies fraseri can be explain better than that of Acer rubrum given the provided measurements of the surrounding environments. While the cover of Acer rubrum is rather stochastic, Abies fraseri is only found at higher elevations in undisturbed virgin forests. Because the cover of Acer rubrum cannot be explained by measurements of environmental variable we can regard it as a generalist species. On the other hand, as Abies fraseri is restricted to environments with specific characteristics (high elevation and undisturbed), we can regard it as a specialist species.  
+
+4. (optional) Examine the behavior of the function stepAIC() using the exploratory models developed above. This is a very simple and not very robust machine learning stepwise algorithm that uses AIC to select a best model. By default it does a backward selection routine.
+
+Let's use stepAIC() to investigate my more complex model for the Abies fraseri data. Can it help me find a simpler model with the same level of fit?
+
+```{r}
+abies_final_mod = lm(cover ~ elev + streamdist + disturb + elev:streamdist + elev:disturb, data = abies)
+
+abies_final_mod2 = update(abies_final_mod, ~. - elev:disturb)
+
+abies_final_mod3 = update(abies_final_mod2, ~. - elev:streamdist)
+
+
+library(MASS)
+
+stepAIC(abies_final_mod)
+stepAIC(abies_final_mod2)
+stepAIC(abies_final_mod3)
+```
+I could not seem to get the function to actually "step" through the different models and work backwards even after specifying direction and scale using arguments within the function. But, either way the stepAIC start scores seems to provide lower scores as I simplify the model with the lowest score given to the simplest model that only with three explanatory variables: elev, streamdist, and disturb. Additionally, the AIC score for the terms within the simplest model (abies_final_mod3) show that elevation has the lowest start AIC score. 
+
+But, when the final model1 with all the interactions, a simple elevation model, and a simplified final model3 are compared with the AIC() function, the original final model that includes the interaction terms returns the lowest AIC score... 
+
+```{r}
+abies_elev_mod <- lm(formula = cover ~ elev, data = abies)
+AIC(abies_elev_mod)
+AIC(abies_final_mod3)
+AIC(abies_final_mod)
+```
