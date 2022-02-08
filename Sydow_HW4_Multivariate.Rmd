@@ -1,0 +1,100 @@
+---
+title: "HW4 Multivariate Models"
+author: "Patrick Sydow"
+date: "2/3/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(vegan)
+data(dune)
+data(dune.env)
+```
+1. Conduct an indirect ordination on the dune plant community. Specifically, visually examine a NMDS plot using the bray-curtis distance metric. Below is some code to help you develop a potential plot that emphasizes the role of the environmental variable “Moisture”. Describe how you interpret the graphic. What is the goal of creating such a plot? Does this analysis suggest any interesting findings with respect to the dune vegetation?
+
+```{r}
+dune_mds = metaMDS(dune)
+
+plot(dune_mds, type='n')
+text(dune_mds, 'sp', cex=.5)
+# generate vector of colors 
+color_vect = rev(terrain.colors(6))[-1]
+points(dune_mds, 'sites', pch=19, 
+        col=color_vect[dune.env$Moisture])
+legend('topright', paste("Moisture =", 1:5, sep=''), 
+        col=color_vect, pch=19)
+```
+
+The plot above is the result of running an NMDS that aims to represent the total variation in abundance of 30 species within a 2D space while trying to optimize stress. The indirect ordination organizes a single matrix along multiple axes and also allows for a plot which can plot data along two axes of choice. These axes are typically the two axes that explain the most variation in the data: NMDS1 and NMDS2. Within this plot, point/variables/species that are close together show similar trends and variation within the abundance data set across NMDS1 and NMDS2 and can be "grouped" as behaving similarly. After we know how these species can be grouped in terms of their abundance, next we want to be able to explain this grouping using an explanatory variable: moisture. When moisture data is added to this plot using a color scale, we can see how the groupings of species can be explained by the moisture of plots were they are found across NMDS1. Species that are plotted together in 2D space also have similar colors meaning that species showing similar trends in abundance also show similar trend in the moisture of the environment in which they are abundant. This suggests that the moisture of an environment determines the composition of plant communities in dutch dune meadows. This may explain the variation across NMDS1, but the any pattern across NMDS2 is unclear.
+
+2. Carry out a direct ordination using CCA in order to test any potential hypotheses that you developed after examining the MDS plot. Specifically, carry out a test of the entire model (i.e., including all constrained axes) and also carry out tests at the scale of individual explanatory variables you included in your model if you included more than one variable. Plot your results.
+
+I hypothesize that soil moisture will be the most significant explanatory variable in determining the abundance of species and will have the largest significant partial effect within the model. I believe this mostly because of the pattern of increasing moisture across NMDS1: the ordination axes that explains the most variance in the abundance data. 
+
+```{r}
+
+###build entire model
+
+cca_dune = cca(dune ~ ., data = dune.env)
+RsquareAdj(cca_dune, 100)
+
+anova(cca_dune, permutations = 999)
+
+#look at individual explanatory variable within the entire model
+
+anova(cca_dune, by='margin', permutations = 999)
+
+#plot the CCA with all variables
+
+plot(cca_dune, type='n', scaling=1)
+orditorp(cca_dune, display='sp', cex=0.5, scaling=1, col='blue')
+text(cca_dune, display='bp', col='red')
+
+```
+
+The model including all the variables is significant according the ANOVA. But, when broken down by the individual explanatory variables, none by themselves are significant when controlling for other the effect of other variables. This may be because multiple variables may be confounding (they may produce similar trends in the data). This would make sense because management practices may influence and be correlated with the depth of the A horizon. But the depth of the A horizon appears to have the largest partial effect size while the moisture of the soil appears to be most significant. 
+
+Let's see if moisture - by itself - as an explanatory variable can produce a model that explains some variance significantly.
+
+```{r}
+cca_dune_moist = cca(dune ~ dune.env$Moisture)
+RsquareAdj(cca_dune_moist, 100)
+
+anova(cca_dune_moist, permutations = 999)
+```
+
+This model has a adjusted r squared not much smaller than that of the full model (.164 vs .229). Additionally, the F statistic of this model only containing the Moisture variable is larder than that of the full model! Additionally, the p-value is much smaller.
+
+```{r}
+cca_dune_A1 = cca(dune ~ dune.env$A1)
+RsquareAdj(cca_dune_A1, 100)
+
+anova(cca_dune_A1, permutations = 999)
+```
+Interestingly, when the depth of the A horizon of the soil has the largest partial effect in the larger model, in a model on its own, the F statistic is not as large as the F statistic of the moisture model.
+
+When taking a glance at the CCA plot with labels for all the variables, management also produces some large arrows indicating the ability to explain a large amount of variation. Let's look at a model including just Management
+
+```{r}
+cca_dune_Management = cca(dune ~ dune.env$Management)
+RsquareAdj(cca_dune_Management, 100)
+
+anova(cca_dune_Management, permutations = 999)
+```
+
+This model appears better than that of the A1 variable but still not as great as the moisture model.
+
+In short, the moisture of the sites seems to explain the most variation in species abundance in a simple model that is more significant than the complex model with all the other variables with a relatively small difference in the adjusted R squared value. 
+
+3. Do your two analyses agree with one another or complement one another or do these two analyses seem to be suggesting different take home messages? Which analysis do you find to be more useful?
+
+These two analyses (indirect versus direct ordination) complement each other and suggest similar take home messages. But one has more statistical certainty than the other. Starting with an indirect ordination allows us to visualize variation across responses variables and begin to look for trends across the plots produced by these analyses. While the indirect ordination sparks our intuition, the direct ordination allows us to test it. The direct ordination, on the other hand, allows us to test specific hypotheses given our explanatory variables.
+
+
+
+
+
