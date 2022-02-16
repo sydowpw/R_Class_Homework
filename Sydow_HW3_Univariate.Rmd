@@ -108,7 +108,7 @@ Now let's use the summary() function to take another look.
 
 ```{r}
 summary(acer_all_mod)
-summary(null_mod)
+summary(acer_null_mod)
 ```
 
 From both perspectives the streamdistance variable does not seem to be very signifcant and should to removed from the model according to the law of parsimony. Using the Anova() function, site disturbance type does not to be a significant variable. But, when using the summary() function we can see that the SETTLE factor within site disturbance is significant.
