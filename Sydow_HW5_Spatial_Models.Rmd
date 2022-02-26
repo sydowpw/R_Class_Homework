@@ -1,0 +1,244 @@
+---
+title: 'HW 5: Spatial Models'
+author: "Patrick Sydow"
+date: "2/20/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+1) Examine if there is evidence of spatial dependence in a rare and a common species in the BCI tree dataset
+```{r}  
+rm(list = ls(all = TRUE)) 
+
+library(vegan)
+data(BCI)
+## UTM Coordinates (in metres)
+BCI_xy = data.frame(x = rep(seq(625754, 626654, by=100), each=5), 
+                    y = rep(seq(1011569,  1011969, by=100), len=50))
+```
+Determine what is rare and what is common...
+
+Common species are found in many plots.
+
+Rare species are found in few plots but can be abundant in those plots.
+
+Cycle through abundance data at sites to find "rare" and "common" species. (result not knitted due to large number of plots)
+``` {r}
+
+##for (i in 1:ncol(BCI)) {
+  ##hist(BCI[,i], data = BCI)
+  ##mtext(names(BCI[i]))
+##}
+```
+Faramea.occidentalis = common
+
+Inga.pezizifera = rare
+```{r}
+hist(BCI$Faramea.occidentalis)
+
+hist(BCI$Inga.pezizifera)
+```
+Examine evidence in common species: Faramea occidentalis.
+```{r}
+library(dplyr)
+abund_common <- BCI %>% select(Faramea.occidentalis)
+colnames(abund_common) <- c('abund_common')
+xy_common <-  abund_common %>% bind_cols(BCI_xy)
+plot(x = xy_common$x, y = xy_common$y, cex = xy_common$abund_common/max(xy_common$abund_common))
+```
+F. occidentalis is found in almost every site but appears to be more abundant in a cluster near the bottom left third of the range of the experiment. Let's test for spatial independence starting with calculating and plotting the euclidean distances between plot location and species abundance points.
+```{r}
+# calculate Euclidean distance between abundance and spatial coordinates
+sa_dist <- dist(abund_common)
+xy_dist <- dist(BCI_xy)
+
+# ensure that max distance of interpretation is no greater than 1/2 of max distance in data set
+max_dist <- max(xy_dist) / 2
+
+# plot result
+plot(xy_dist, sa_dist)
+abline(lm(sa_dist ~ xy_dist), lwd=3, col='red')
+lines(lowess(xy_dist, sa_dist), lwd=3, col='pink')
+abline(v = max_dist, col='red', lwd=3, lty=2)
+
+```
+According to this graph with a mostly flat horizontal correlation, species abundance for this common species does not seem to be spatially dependent.
+```{r}
+# calc. correlation
+obs_cor <- cor(xy_dist, sa_dist)
+obs_cor
+```
+A small calculated correlation of 0.036 does not seem to support much of a correlation between xy_dist and sa_dist suggesting no spatial dependence for species abundance.
+
+Let's use the mantel() function to determine whether or not this observed correlation is greater than what we would expect due to random chance through a permutation test.
+
+```{r}
+# mantel permutation test function (p = # times (r null >= r obs) / # permutations)
+common_mantel <- mantel(xy_dist, sa_dist)
+common_mantel
+```
+The returned p-value of 0.241 according to the 0.05 significance level suggests that this observed correlation is not greater than what we would expect due to chance. Because of this, species abundance does not seem to be spatially dependent. 
+
+But, we can also use a correlogram to breakdown xy_dist into sections to see if the correlation between xy_dist and sa_dist may differ across the xy_dist axis. 
+
+```{r}
+# correlogram to break down xy_dist into sections. Does correlation differ by section along xy_dist axis 
+common_corlog = mantel.correlog(sa_dist, xy_dist)
+common_corlog
+
+# plot correlogram result
+par(mfrow=c(1,2))
+plot(common_corlog)
+mtext(side=3, 'Common Species Abundance')
+abline(v = max_dist, col='red', lwd=3, lty=2)
+
+```
+Interestingly, it seems as though there is a positive correlation between xy_dist and sa_distance when xy_dist is small but it moves to be negative as xy_dist increases. This means that the relationship between the distance of sites and the species abundance at these sites varies as distance increases: positive when distance is small but negative when distances are larger. But, according to the corrected p-values of the mantel tests these correlations are not greater than they would be due to chance. Because of this, this pattern cannot be interpreted as significant. 
+
+These results suggests that there is not spatial dependence for species abundance and that differences in species abundance across space are not larger than expected if they were due to chance.
+
+Examine evidence in rare species: Inga pezizifera
+```{r}
+abund_rare <- BCI %>% select(Inga.pezizifera)
+colnames(abund_rare) <- c('abund_rare')
+xy_rare <-  abund_rare %>% bind_cols(BCI_xy)
+plot(x = xy_rare$x, y = xy_rare$y, cex = xy_rare$abund_rare/max(xy_rare$abund_rare))
+```
+According to this plot, the distribution of the rare species seems to be concentrated in the upper right plots of the experimental set up. Let's test for spatial independence starting with calculating and ploting the euclidean distances between plot location and species abundance points.
+
+```{r}
+# calculate Euclidean distance between abundance and spatial coordinates
+sa_dist <- dist(abund_rare)
+xy_dist <- dist(BCI_xy)
+
+# do the plot thing
+max_dist <- max(xy_dist) / 2
+
+# plot result
+plot(xy_dist, sa_dist)
+abline(lm(sa_dist ~ xy_dist), lwd=3, col='red')
+lines(lowess(xy_dist, sa_dist), lwd=3, col='pink')
+abline(v = max_dist, col='red', lwd=3, lty=2)
+```
+There seems to be a slight positive correlation between xy_dist and sa_dist suggesting species abundance may have spatial dependence. Let's calculate the actual correlation.
+```{r}
+# calc. correlation
+obs_cor <- cor(xy_dist, sa_dist)
+obs_cor
+```
+The observed correlation for this rare species is certainly higher than that of the common species but let's use mantel() to see if it is larger than it would be due to chance.
+```{r}
+# mantel permutation test function (p = # times (r null >= r obs) / # permutations)
+rare_mantel <- mantel(xy_dist, sa_dist)
+rare_mantel
+```
+The p-value of 0.001 suggests that the larger calculated correlation is not due to chance. Let's break down this correlation between sections of  xy_dist using correlogram.
+```{r}
+#correlogram to break down xy_dist into sections. Does correlation differ by section along xy_dist axis 
+rare_corlog = mantel.correlog(sa_dist, xy_dist)
+rare_corlog
+
+#plot correlogram result
+par(mfrow=c(1,2))
+plot(rare_corlog)
+mtext(side=3, 'Rare Species Abundance')
+abline(v = max_dist, col='red', lwd=3, lty=2)
+
+```
+Unlike the common species, the correlation for the rare species is almost always positive and also significant for most tests along the xy_dist axis. These results suggests that there is spatial dependence for species abundance and that differences in species abundance across space are larger than expected if they were due to chance.
+
+2) Build two generalized linear models to predict the abundance of the species Drypetes standleyi using the abundance of other tree species in the study site. Specifically examine the following species as predictor variables:
+
+sp_ids = c("Cordia.lasiocalyx", "Hirtella.triandra",
+           "Picramnia.latifolia", "Quassia.amara",
+           "Tabernaemontana.arborea", "Trattinnickia.aspera", 
+           "Xylopia.macrantha")
+
+Let's prepare a single data frame to run these models.
+```{r}
+### select these species and place them in an "explanatory variables" df
+BCI_exp <- BCI %>% select(Cordia.lasiocalyx, Hirtella.triandra,
+           Picramnia.latifolia, Quassia.amara,
+           Tabernaemontana.arborea, Trattinnickia.aspera, 
+           Xylopia.macrantha)
+### rename columns for species to have simpler names
+colnames(BCI_exp) <- c('a', 'b', 'c', 'd', 'e', 'f', 'g')
+### create "response variable" df with just Drypetes standleyi and rename column "sp_abund"
+BCI_resp <- BCI %>% select(Drypetes.standleyi)
+colnames(BCI_resp) <- c('sp_abund')
+### put dataframes together for model construction
+sa_dat = data.frame(BCI_resp, BCI_exp, BCI_xy)
+```
+Let's begin constructing these models beginning with a model containing all species as explanatory variables and also a model with all species containing a nugget.
+```{r}
+library(nlme)
+#create model containing all species as explanatory variables
+sa_exp = gls(sp_abund ~ a + b + c + d + e + f + g, data=sa_dat)
+#plot error to check independence of error
+plot(Variogram(sa_exp, form= ~ x + y))
+#add a nugget to model
+sa_exp_nug = update(sa_exp, corr=corExp(form=~x + y, nugget=T))
+#plot error of model with nugget added with unnormalized and normalized residuals
+plot(Variogram(sa_exp_nug, maxDist = max_dist))
+plot(Variogram(sa_exp_nug, maxDist = max_dist, resType = 'normalized'))
+```
+According to the semivariograms, the model containing a nugget seems to fit the error better than the model without the nugget. There also does not seem to be a trend in the normalized residuals which is good.
+```{r}
+# g seems like an important variable, make model with just one variable
+sa_g = gls(sp_abund ~ g, data=sa_dat)
+plot(Variogram(sa_g, form= ~ x + y))
+
+#add a nugget
+
+## sa_g_nug = update(sa_g, corr=corExp(form=~x + y, nugget=T))
+
+## false convergence error (8), essentially because effect of adding a nugget is so small
+
+#compare all three models: all inclusive, all inclusive + nugget, and just g
+
+anova(sa_exp, sa_exp_nug, sa_g, test=F)
+```
+According to the AIC scores, the best model in the sa_exp_nug model with all species included with a nugget. But, this seems odd because of how good the sa_g model semivariogram appears as well as how complex the all inclusive models are. We would think that the more complex model that does not model error well would have a higher AIC score. But, let's look at the summaries of these models.
+```{r}
+summary(sa_exp)
+summary(sa_exp_nug)
+summary(sa_g)
+```
+This does not seem to be revealing much about why the sa_exp_nug model has the lowest AIC score. But, it may be because the R^2 values of the complex sa_exp_nug and sa_exp model are much higher higher than the that of the sa_g model. This would justify their complexity.
+
+Let's see if adding a spatial error term impacts these models
+```{r}
+#use corExp error term to display exponential residual model
+sa_exp_g = update(sa_g, corr=corExp(form=~x + y))
+plot(Variogram(sa_exp_g, form= ~ x + y))
+summary(sa_g)
+summary(sa_exp_g)
+#use corExp error term to display exponential residual model
+sa_exp_exp_nug = update(sa_exp_nug, corr=corExp(form=~x + y))
+plot(Variogram(sa_exp_exp_nug, form= ~ x + y))
+summary(sa_exp_nug)
+summary(sa_exp_exp_nug)
+```
+Including the exponential spatial error term seems to have changed the coefficients of the model but more so in the sa_g model than the sa_exp model. But, the semivariograms are showing that the new models with these exponential error terms do not fit the error well at all.
+
+Let's compare how these terms effected the overall fit of the model using anova()
+```{r}
+anova(sa_g, sa_exp_g)
+anova(sa_exp_nug, sa_exp_exp_nug)
+```
+It looks like adding the exponential error term to the simple sa_g model improved the fit significantly. But, although it decreased the AIC score of the model, adding the term to the more complex model did not have a significant effect on model fit.
+
+Changing the error in the simple sa_g model had a larger effect because of how differently the model modeled the residuals (big difference in semivariogram plot). Changing the error term in the more complex model did not have as drastic of an effect on how the model modeled the residuals (less difference in semivariogram plot)
+
+Let's look and see how the residuals of the sa_exp_nug are spatially structured
+```{r}
+col_brks = hist(residuals(sa_exp_nug), plot=F)$breaks
+col_indices = as.numeric(cut(residuals(sa_exp_nug), col_brks))
+cols = rev(terrain.colors(length(col_brks)))
+plot(BCI_xy, cex=2, pch=19, col=cols[col_indices])
+```
+It definitely looks like the residuals are spatially structure with a clear pattern moving up and away from the bottom left of the plot.
+
+
